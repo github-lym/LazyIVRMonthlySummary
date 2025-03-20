@@ -19,6 +19,7 @@ namespace LazyIVRMonthlySummary
         static DataTable dt1;
         static readonly string assemblyPath = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         static string folder;
+
         static void Main(string[] args)
         {
             if (args.Length == 0)
@@ -32,7 +33,8 @@ namespace LazyIVRMonthlySummary
             dt1 = GenType1();
             dt1.Columns[1].ColumnName = "Count";
             dt1.Columns[2].ColumnName = "SMSType";
-            System.Console.WriteLine("Type1~11 資料 處理完畢");
+            //System.Console.WriteLine("Type1~11 資料 處理完畢");
+            System.Console.WriteLine("Type1~12 資料 處理完畢");   //12於20240201移至Type1~11的Table
 
             DataTable dt2 = GenType2();
             if (dt2.Rows.Count > 0)
@@ -47,13 +49,19 @@ namespace LazyIVRMonthlySummary
                     row["SMSType"] = dt2.Rows[i][2];
                     dt2temp.Rows.Add(row);
                 }
-                System.Console.WriteLine("Type12 13 SP 與 資料 處理完畢");
+                //System.Console.WriteLine("Type12 13 SP 與 資料 處理完畢");
+                System.Console.WriteLine("Type13 SP 與 資料 處理完畢"); //12於20240201移至Type1~11的Table
                 dt1.Merge(dt2temp);
             }
 
             var result = GenResult();
+
+            //讀取MOTP額外資料
+            ReadExtended(result);
+
             ConvertToTempCSV(result, System.IO.Path.Combine(assemblyPath, folder, $"{DateTime.Now:yyyyMMdd}.csv"));
             System.Console.WriteLine("整理資料完畢");
+
 
             ConvertToFinalFile(result);
 
@@ -62,7 +70,7 @@ namespace LazyIVRMonthlySummary
         }
 
         /// <summary>
-        /// 查詢Type1~11
+        /// 查詢Type1~11(12於20240201移至Type1~11的Table)
         /// </summary>
         /// <returns></returns>
         private static DataTable GenType1()
@@ -71,7 +79,7 @@ namespace LazyIVRMonthlySummary
             try
             {
                 string connectionString = @"Data Source=172.17.60.70;Initial Catalog=AfiscIVR;Persist Security Info=True;User ID=ecpuser;Password=8Cy39pDbbZgp;";
-                string sql = File.ReadAllText(System.IO.Path.Combine(assemblyPath, "type1_11.txt"));
+                string sql = File.ReadAllText(System.IO.Path.Combine(assemblyPath, "type1_12.txt"));
                 sql = sql.Replace("SDATE", smsDate.ToString("yyyy-MM-dd")).Replace("EDATE", smsDate.AddMonths(1).AddDays(-1).ToString("yyyy-MM-dd"));
                 // System.Console.WriteLine(sql);
                 using (SqlConnection con = new SqlConnection(connectionString))
@@ -89,14 +97,14 @@ namespace LazyIVRMonthlySummary
             }
             catch (System.Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine(string.Concat("GenType1:", ex.ToString()));
                 return dt;
             }
 
         }
 
         /// <summary>
-        /// 查詢Type12 13
+        /// 查詢Type12 13(12於20240201移至Type1~11的Table)
         /// </summary>
         /// <returns></returns>
         private static DataTable GenType2()
@@ -105,7 +113,7 @@ namespace LazyIVRMonthlySummary
             try
             {
                 string connectionString = @"Data Source=172.17.60.70;Initial Catalog=IVR_Sys;Persist Security Info=True;User ID=voice;Password='@ots104';";
-                string sql = File.ReadAllText(System.IO.Path.Combine(assemblyPath, "type1213.txt"));
+                string sql = File.ReadAllText(System.IO.Path.Combine(assemblyPath, "type13.txt"));
                 sql = sql.Replace("SEDATE", smsDate.ToString("yyyyMM"));
                 // System.Console.WriteLine(sql);
                 using (SqlConnection con = new SqlConnection(connectionString))
@@ -132,7 +140,7 @@ namespace LazyIVRMonthlySummary
             }
             catch (System.Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine(string.Concat("GenType2:", ex.ToString()));
                 return dt;
             }
 
@@ -222,7 +230,7 @@ namespace LazyIVRMonthlySummary
             }
             catch (System.Exception ex)
             {
-                System.Console.WriteLine(ex.ToString());
+                System.Console.WriteLine(string.Concat("GenResult:", ex.ToString()));
                 return dt;
             }
             return dt;
@@ -279,8 +287,150 @@ namespace LazyIVRMonthlySummary
             }
             catch (System.Exception ex)
             {
-                System.Console.WriteLine(ex.ToString());
+                System.Console.WriteLine(string.Concat("ConvertToTempCSV:", ex.ToString()));
             }
+        }
+
+        /// <summary>
+        /// 讀取MOTP提供 20240401
+        /// 讀取額外資料 20250123
+        /// </summary>
+        private static void ReadExtended(DataTable dt)
+        {
+            Dictionary<string, string> motpExtended = new Dictionary<string, string>();
+            Dictionary<string, string> custSMSExtended = new Dictionary<string, string>();
+
+            try
+            {
+                string hceFile = Path.Combine(assemblyPath, "額外資料", smsDate.ToString("yyyy-MM-dd") + "-HCE.csv");
+
+                if (File.Exists(hceFile))
+                {
+                    System.Console.WriteLine("讀取HCE資料");
+                    using (StreamReader reader = new StreamReader(hceFile))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            string[] lineData = line.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            motpExtended.Add(lineData[0], lineData[1]);
+                        }
+                    }
+                    System.Console.WriteLine("讀取HCE資料資料完畢");
+                }
+
+                string atmFile = Path.Combine(assemblyPath, "額外資料", smsDate.ToString("yyyy-MM-dd") + "-ATM.csv");
+                if (File.Exists(atmFile))
+                {
+                    System.Console.WriteLine("讀取ATM指靜脈資料");
+                    using (StreamReader reader = new StreamReader(atmFile))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            string[] lineData = line.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (motpExtended.ContainsKey(lineData[0]))
+                                motpExtended[lineData[0]] = (int.Parse(motpExtended[lineData[0]]) + int.Parse(lineData[1])).ToString();
+                            else
+                                motpExtended.Add(lineData[0], lineData[1]);
+                        }
+                    }
+                    System.Console.WriteLine("讀取ATM指靜脈資料完畢");
+                }
+
+                string custSMSFile = Path.Combine(assemblyPath, "額外資料", smsDate.ToString("yyyy-MM-dd") + "-CUSTSMS.csv");
+
+                if (File.Exists(custSMSFile))
+                {
+                    System.Console.WriteLine("讀取農會自發資料");
+                    using (StreamReader reader = new StreamReader(custSMSFile))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            string[] lineData = line.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            custSMSExtended.Add(lineData[0], lineData[1]);
+                        }
+                    }
+                    System.Console.WriteLine("讀取農會自發資料完畢");
+                }
+
+                //有值的話加入原值
+                for (int i = 0; i < dt.Rows.Count; i++)
+                {
+                    if (motpExtended.Any(l => l.Key == dt.Rows[i]["SwiftCod"].ToString()))
+                    {
+                        dt.Rows[i]["T12"] = int.Parse(dt.Rows[i]["T12"].ToString()) + int.Parse(motpExtended[dt.Rows[i]["SwiftCod"].ToString()]);
+                        motpExtended.Remove(dt.Rows[i]["SwiftCod"].ToString());
+                    }
+                    if (custSMSExtended.Any(l => l.Key == dt.Rows[i]["SwiftCod"].ToString()))
+                    {
+                        dt.Rows[i]["T10"] = int.Parse(dt.Rows[i]["T10"].ToString()) + int.Parse(custSMSExtended[dt.Rows[i]["SwiftCod"].ToString()]);
+                        custSMSExtended.Remove(dt.Rows[i]["SwiftCod"].ToString());
+                    }
+                }
+
+                //若還有剩
+                if (motpExtended.Count > 0)
+                {
+                    foreach (var item in motpExtended)
+                    {
+                        var row = dt.NewRow();
+                        row["SwiftCod"] = item.Key;
+                        row["T1"] = 0;
+                        row["T2"] = 0;
+                        row["T3"] = 0;
+                        row["T4"] = 0;
+                        row["T5"] = 0;
+                        row["T6"] = 0;
+                        row["T7"] = 0;
+                        row["T8"] = 0;
+                        row["T9"] = 0;
+                        if (custSMSExtended.Any(l => l.Key == item.Key))
+                        {
+                            row["T10"] = custSMSExtended[item.Key];
+                            custSMSExtended.Remove(item.Key);
+                        }
+                        else
+                            row["T10"] = 0;
+                        row["T11"] = 0;
+                        row["T12"] = item.Value;
+                        row["T13"] = 0;
+                        dt.Rows.Add(row);
+                    }
+                }
+                if (custSMSExtended.Count > 0)
+                {
+                    foreach (var item in custSMSExtended)
+                    {
+                        var row = dt.NewRow();
+                        row["SwiftCod"] = item.Key;
+                        row["T1"] = 0;
+                        row["T2"] = 0;
+                        row["T3"] = 0;
+                        row["T4"] = 0;
+                        row["T5"] = 0;
+                        row["T6"] = 0;
+                        row["T7"] = 0;
+                        row["T8"] = 0;
+                        row["T9"] = 0;
+                        row["T10"] = item.Value;
+                        row["T11"] = 0;
+                        row["T12"] = 0;
+                        row["T13"] = 0;
+                        dt.Rows.Add(row);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+
+                System.Console.WriteLine(string.Concat("ReadExtended:", ex.ToString()));
+            }
+
+            DataView dataView = dt.DefaultView;
+            dataView.Sort = "SwiftCod DESC";
+            dt = dataView.ToTable().Clone();
         }
 
         /// <summary>
@@ -299,7 +449,9 @@ namespace LazyIVRMonthlySummary
                 //一覽表資料起始列
                 const int startRow = 3;
                 //最終金額
-                int lastPrice = 0;
+                int lastPriceTotal = 0;
+                ////語音簡訊金額
+                //int lastPriceIVR = 0;
                 //目前處理的列數
                 int index = startRow;
 
@@ -327,13 +479,36 @@ namespace LazyIVRMonthlySummary
                             ws1.Cell("H" + index).Value = row["T7"];
                             ws1.Cell("I" + index).Value = row["T8"];
                             ws1.Cell("J" + index).Value = row["T9"];
+
+                            //if (hceDict.Any(l => l.Key == row["SwiftCod"].ToString()))
+                            //{
+                            //    ws1.Cell("K" + index).Value = int.Parse(row["T10"].ToString()) + int.Parse(hceDict[row["SwiftCod"].ToString()]);
+                            //    Console.WriteLine(@"SwiftCod:" + hceDict[row["SwiftCod"].ToString()]);
+                            //    hceDict.Remove(row["SwiftCod"].ToString());
+                            //}
+                            //else
                             ws1.Cell("K" + index).Value = row["T10"];
+
                             ws1.Cell("L" + index).Value = row["T11"];
                             ws1.Cell("M" + index).Value = row["T12"];
                             ws1.Cell("N" + index).Value = row["T13"];
                             ws1.Cell("O" + index).FormulaA1 = "=SUM(B" + index + ":N" + index + ")";
                             ws1.Cell("P" + index).FormulaA1 = "=ROUNDUP(O" + index + "*" + sms_price + ", 0)";
+
+                            //lastPriceIVR += int.Parse(row["T1"].ToString());
+                            //lastPriceIVR += int.Parse(row["T2"].ToString());
+                            //lastPriceIVR += int.Parse(row["T3"].ToString());
+                            //lastPriceIVR += int.Parse(row["T4"].ToString());
+                            //lastPriceIVR += int.Parse(row["T5"].ToString());
+                            //lastPriceIVR += int.Parse(row["T6"].ToString());
+                            //lastPriceIVR += int.Parse(row["T7"].ToString());
+                            //lastPriceIVR += int.Parse(row["T8"].ToString());
+                            //lastPriceIVR += int.Parse(row["T9"].ToString());
+                            //lastPriceIVR += int.Parse(row["T10"].ToString());
                         }
+
+
+
                         ws1.Ranges("A" + startRow + ":P" + index).Style.Border.LeftBorder = XLBorderStyleValues.Thin;
                         ws1.Ranges("A" + startRow + ":P" + index).Style.Border.RightBorder = XLBorderStyleValues.Thin;
                         ws1.Ranges("A" + startRow + ":P" + index).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
@@ -346,6 +521,20 @@ namespace LazyIVRMonthlySummary
                         ws1.Ranges("O" + total + ":P" + total).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
 
                         ws1.Ranges("P" + startRow + ":P" + total).Style.Font.Bold = true;
+
+                        //1~10 語音簡訊統計
+                        ws1.Cell("K" + total).FormulaA1 = "=SUM(B" + startRow + ":K" + index + ")";
+                        ws1.Cell("K" + total).Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+                        ws1.Cell("K" + total).Style.Border.RightBorder = XLBorderStyleValues.Thin;
+                        ws1.Cell("K" + total).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+                        //12 網銀非約轉OTP簡訊
+                        ws1.Cell("M" + total).FormulaA1 = "=SUM(M" + startRow + ":M" + index + ")";
+                        //13 LinePay簡訊
+                        ws1.Cell("N" + total).FormulaA1 = "=SUM(N" + startRow + ":N" + index + ")";
+
+                        ws1.Ranges("M" + total + ":N" + total).Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+                        ws1.Ranges("M" + total + ":N" + total).Style.Border.RightBorder = XLBorderStyleValues.Thin;
+                        ws1.Ranges("M" + total + ":N" + total).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
 
                         // 儲存 簡訊費用_應收一覽表 Excel
                         excelFileName = System.IO.Path.Combine(fpath, $"{smsDate.Year - 1911}{smsDate.Month.ToString().PadLeft(2, '0')}簡訊費用_應收一覽表.xlsx");
@@ -391,7 +580,7 @@ namespace LazyIVRMonthlySummary
                         smsExcelSheet.Cell(smsExcelStratRow, 3).Value = $"{smsDate.ToString("yyyyMM")}";
                         smsExcelSheet.Cell(smsExcelStratRow, 4).Value = ws1.Cell(index + 1, 15).Value;
                         smsExcelSheet.Cell(smsExcelStratRow, 5).Value = ws1.Cell(index + 1, 16).Value;
-                        int.TryParse(ws1.Cell(index + 1, 16).Value.ToString(), out lastPrice);
+                        int.TryParse(ws1.Cell(index + 1, 16).Value.ToString(), out lastPriceTotal);
 
                         // 儲存 簡訊費用 Excel
                         excelFileName = $"{smsDate.Year - 1911}{smsDate.Month.ToString().PadLeft(2, '0')}簡訊費用.xlsx";
@@ -441,7 +630,7 @@ namespace LazyIVRMonthlySummary
                             }
                             if (text.Text.Contains("金額數字"))
                             {
-                                text.Text = text.Text.Replace("金額數字", lastPrice.ToString());
+                                text.Text = text.Text.Replace("金額數字", lastPriceTotal.ToString());
                                 continue;
                             }
                         }
@@ -453,7 +642,7 @@ namespace LazyIVRMonthlySummary
             }
             catch (Exception ex)
             {
-                System.Console.WriteLine(ex.ToString());
+                System.Console.WriteLine(string.Concat("ConvertToFinalFile:", ex.ToString()));
             }
         }
     }
